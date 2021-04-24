@@ -7,57 +7,31 @@ import numpy as np
 input_shape = (28, 28, 1)
 num_classes = 10
 
-model = keras.Sequential([
-    layers.InputLayer(input_shape),
-    layers.Dropout(0.1),
-    layers.Conv2D(256, (13, 13), activation=tf.nn.relu, name='conv0'),
-    layers.MaxPooling2D(pool_size=(2, 2), name='pool0'),
-    layers.Dropout(0.5),
-    layers.Conv2D(256, (3, 3), activation=tf.nn.relu, name='conv1'),
-    layers.MaxPooling2D(pool_size=(2, 2), name='pool1'),
-    layers.Flatten(),
-    layers.Dropout(0.5),
-    layers.Dense(num_classes, activation=tf.nn.softmax),
-])
+inputs = keras.Input(input_shape)
+lastLayer = inputs
+for i in range(4):
+    li = []
+    for size in [3, 5]:
+        layer = layers.Conv2D(
+            1, size, padding='same', activation='relu'
+        )(lastLayer)
+        for feature in (layer[:,:,:, i] for i in range(layer.shape[3])):
+            li.append(feature)
 
-model.summary()
+    li.append(keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(1,1), padding='same')(lastLayer)[:,:,:,0])
+    conv = tf.stack(li, 3)
+    lastLayer = conv
 
-# the data, split between train and test sets
-(x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
+avgpool = layers.AveragePooling2D(
+    pool_size=(7, 7)
+)(lastLayer)
+flatten = layers.Flatten()(avgpool)
+outputs = layers.Dense(num_classes, activation=tf.nn.softmax)(flatten)
 
-# Scale images to the [0, 1] range
-x_train = x_train.astype("float32") / 255
-x_test = x_test.astype("float32") / 255
-# Make sure images have shape (28, 28, 1)
-x_train = np.expand_dims(x_train, -1)
-x_test = np.expand_dims(x_test, -1)
-print("x_train shape:", x_train.shape)
-print(x_train.shape[0], "train samples")
-print(x_test.shape[0], "test samples")
-
-
-# convert class vectors to binary class matrices
-y_train = keras.utils.to_categorical(y_train, num_classes)
-y_test = keras.utils.to_categorical(y_test, num_classes)
+model = keras.models.Model(inputs, outputs)
 
 model.compile(loss="categorical_crossentropy", optimizer="adam", metrics=["accuracy"])
 
-import datetime
-
-log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
-
-print("Fit model on training data")
-history = model.fit(
-    x_train,
-    y_train,
-    batch_size=64,
-    epochs=2,
-    # We pass some validation for
-    # monitoring validation loss and metrics
-    # at the end of each epoch
-    validation_data=(x_test, y_test),
-    callbacks=[tensorboard_callback],
-)
+model.summary()
 
 model.save('conv')
